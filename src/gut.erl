@@ -27,7 +27,7 @@
 %%====================================================================
 
 %% API
--export([test/1, test/2, test/4]).
+-export([test/1, test/2,test/3, test/4]).
 
 %% gut callbacks
 -export([init_per_suite/0,
@@ -89,6 +89,9 @@ test(Module) ->
 
 test(Module, Options) ->
     test(Module, Options, all, all).
+
+test(Module,Groups, Testcases) ->
+    test(Module, [], Groups, Testcases).
 
 test(Module, Options,  Groups, Testcases) ->
     TestModule = case lists:suffix("_tests", atom_to_list(Module)) of
