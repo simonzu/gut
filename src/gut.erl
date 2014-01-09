@@ -87,18 +87,18 @@
 test(Module) ->
     test(Module,[]).
 
-test(Module, Options) ->
-    test(Module, Options, all, all).
+test(Module, Groups) ->
+    test(Module, Groups, all).
 
 test(Module,Groups, Testcases) ->
-    test(Module, [], Groups, Testcases).
+    test(Module, Groups, Testcases, []).
 
-test(Module, Options,  Groups, Testcases) ->
-    TestModule = case lists:suffix("_tests", atom_to_list(Module)) of
+test(Module,  Groups, Testcases, Options) ->
+    TestModule = case lists:suffix("_gut", atom_to_list(Module)) of
 		     true ->
 			 Module;
 		     false ->
-			 list_to_atom(atom_to_list(Module) ++ "_tests")
+			 list_to_atom(atom_to_list(Module) ++ "_gut")
 		 end,
 
     {_Mod,_Beam,FilePath} = code:get_object_code(TestModule),
@@ -122,8 +122,8 @@ test(Module, Options,  Groups, Testcases) ->
     {ok, TestModule, Binary, _Warning} = 
 	compile:forms(lists:reverse(TestModuleForms6), [return_errors, return_warnings]),
 
-    code:purge(TestModule),
-    code:load_binary(TestModule,FilePath,Binary),
+    true = code:soft_purge(TestModule),
+    {module, TestModule} = code:load_binary(TestModule,FilePath,Binary),
 
     eunit:test(TestModule, Options).
 
@@ -142,7 +142,7 @@ add_template_functions(TemplateForms, TestModuleForms) ->
     add_template_function(gut_group, TemplateForms,
     add_template_function(assemble_gut_testcase, TemplateForms,
     add_template_function(gut_testcases, TemplateForms,
-    add_template_function(gut_testcase_template, TemplateForms, TestModuleForms)))).
+    add_template_function(gut_testcase, TemplateForms, TestModuleForms)))).
 
 
 add_template_function(Function, TemplateForms, TestModuleForms) ->
@@ -207,7 +207,7 @@ set_missing_group(TestModuleForms) ->
 
 
 group_all_testcases(TestModuleForms) ->
-    [?FUNCTION_GUARD(test, 2, Clauses)] = 
+    [?FUNCTION_GUARD(testcase, 2, Clauses)] = 
 	lists:filter(fun(?FUNCTION_GUARD(testcase, 2, _)) ->
 			     true;
 			(_) ->
@@ -217,8 +217,8 @@ group_all_testcases(TestModuleForms) ->
 				    case element(3, Clause) of
 					[?ATOM_GUARD(Testcase)|_] ->
 					    [Testcase | Acc];
-					_ ->
-					    Acc
+				        InvalidTestcase ->
+					    throw({invalid_testcase, InvalidTestcase})
 				    end
 			    end, [], Clauses),
     ?FUNCTION(testcases_per_group, 1, [?CLAUSE([?ATOM(default)], 
@@ -296,67 +296,71 @@ testcases_to_test(Testcases, TestModuleForms) ->
 %%====================================================================
 
 %%--------------------------------------------------------------------
-%% Function: init_per_suite()
 %% Description: This function will be called before running suite.
 %%              This function return a SuiteConfig
 %%--------------------------------------------------------------------
+-spec init_per_suite() -> SuiteConfig :: any().
 init_per_suite() ->
     ok.
 
 %%--------------------------------------------------------------------
-%% Function: end_per_suite(SuiteConfig)
 %% Description: This function will be called after running suite.
 %%--------------------------------------------------------------------
+-spec end_per_suite(SuiteConfig :: any()) -> any().
 end_per_suite(_) ->
     ok.
 
 
 %%--------------------------------------------------------------------
-%% Function: init_per_group(GroupName, TestsuiteConfig)
 %% Description: This function will be called before running the testcases in group.
 %%              This function return a GroupConfig
 %%--------------------------------------------------------------------
+-spec init_per_group(GroupName :: atom(), SuiteConfig :: any()) 
+		    -> GroupConfig :: any().
 init_per_group(_, _) ->
     ok.
 %%--------------------------------------------------------------------
-%% Function: end_per_group(GroupConfig)
 %% Description: This function will be called after running testcases in group.
 %%--------------------------------------------------------------------
+-spec end_per_group(GroupName :: atom(), GroupConfig :: any ())
+		   -> any().
 end_per_group(_, _) ->
     ok.
 
 %%--------------------------------------------------------------------
-%% Function: init_per_testcase(TestcaseName, GroupConfig)
 %% Description: This function will be called before running a testcase.
 %%              This function return a TestcaseConfig
 %%--------------------------------------------------------------------
+-spec init_per_testcase(TestcaseName :: atom(), GroupConfig :: any()) 
+		       -> TestcaseConfig :: any().
 init_per_testcase(_, _) ->
     ok.
 
 %%--------------------------------------------------------------------
-%% Function: end_per_testcase(TestcaseConfig)
 %% Description: This function will be called after running a testcase
 %%--------------------------------------------------------------------
+-spec end_per_testcase(TestcaseName :: atom(), TestcaseConfig :: any())
+		      -> any().
 end_per_testcase(_, _) ->
     ok.
 %%--------------------------------------------------------------------
-%% Function: groups()
 %% Description: This function returns a list of group name
 %%--------------------------------------------------------------------
+-spec groups() -> [GroupName :: atom()].
 groups() ->
     [default].
 
 %%--------------------------------------------------------------------
-%% Function: testcases_per_group(GroupName)
 %% Description: This function returns a list of testcase name in the group
 %%--------------------------------------------------------------------
+-spec testcases_per_group(GroupName :: atom()) -> [TestcaseName :: atom()].
 testcases_per_group(default) ->
     [].
 
 %%--------------------------------------------------------------------
-%% Function: testcase(TestcaseName, TestcaseConfig)
 %% Description: The testcase to be implemented
 %%--------------------------------------------------------------------
+-spec testcase(TestcaseName :: atom(), TestcaseConfig :: any()) -> any().
 testcase(_, _) ->
     ok.
 
@@ -385,7 +389,7 @@ valid_gut_testcase(_) ->
     true.
 
 
-gut_testcase_template({Testcase, Options1}, GroupConfig) when is_list(Options1) ->
+gut_testcase({Testcase, Options1}, GroupConfig) when is_list(Options1) ->
     Options = case lists:keyfind(title, 1, Options1) of
 		  false ->
 		      [{title, atom_to_list(Testcase)} | Options1];
@@ -412,12 +416,12 @@ gut_testcase_template({Testcase, Options1}, GroupConfig) when is_list(Options1) 
 	    []
     end;
 
-gut_testcase_template(Testcase, GroupConfig) when is_atom(Testcase) ->
-    gut_testcase_template({Testcase, []}, GroupConfig).
+gut_testcase(Testcase, GroupConfig) when is_atom(Testcase) ->
+    gut_testcase({Testcase, []}, GroupConfig).
 
 gut_testcases(GroupName, GroupConfig) ->
     lists:map(fun(Testcase) -> 
-		      gut_testcase_template(Testcase, GroupConfig) 
+		      gut_testcase(Testcase, GroupConfig) 
 	      end, testcases_per_group(GroupName)).
 
 assemble_gut_testcase(Testcase, []) ->
