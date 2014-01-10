@@ -29,6 +29,8 @@
 %% API
 -export([test/1, test/2,test/3, test/4]).
 
+-export([test_verbose/1, test_verbose/2,test_verbose/3]).
+
 %% gut callbacks
 -export([init_per_suite/0,
 	 end_per_suite/1,
@@ -63,6 +65,8 @@
 
 -define(CONS(H, T), {cons, ?LINE, H, T}).
 
+-define(ATTRIBUTE(Name, Value), {attribute, ?LINE, Name, Value}).
+
 -define(NIL(), {nil, ?LINE}).
 
 -define(CLAUSE(Args, Body), {clause, ?LINE, Args, [], Body}).
@@ -80,12 +84,21 @@
 %%====================================================================
 
 %%--------------------------------------------------------------------
-%% Function: test(Module)
+%% Function: test(Module), test_verbose(Module)
 %% Description: Executes the testcases of Module
 %%--------------------------------------------------------------------
 
+test_verbose(Module) ->
+    test_verbose(Module, all).
+
+test_verbose(Module, Groups) ->
+    test_verbose(Module, Groups, all).
+
+test_verbose(Module, Groups, Testcases) ->
+    test(Module, Groups, Testcases, [verbose]).
+
 test(Module) ->
-    test(Module,[]).
+    test(Module,all).
 
 test(Module, Groups) ->
     test(Module, Groups, all).
@@ -199,7 +212,6 @@ set_missing_group(TestModuleForms) ->
 	    AllTestcases = group_all_testcases(TestModuleForms),
 	    DefaultGroup = 
 		?FUNCTION(groups, 0, [?CLAUSE([], [?CONS(?ATOM(default), ?NIL())])]),
-
 	    [DefaultGroup, AllTestcases | TestModuleForms];
 	true ->
 	    TestModuleForms
@@ -248,10 +260,19 @@ eunit_test_generator(TemplateForms, TestModuleForms) ->
 			(_) ->
 			     false
 		     end, TemplateForms),
-    
-    MainTest = ?FUNCTION(list_to_atom(atom_to_list(TestModule) ++ "_test_"), 0, Clauses),
-    
-    [MainTest | TestModuleForms].
+
+    MainFun = list_to_atom(atom_to_list(TestModule) ++ "_test_"),
+    MainTest = ?FUNCTION(MainFun, 0, Clauses),
+    {ReversedForms, RemainForms} = split_forms_by_module(TestModuleForms, []),
+    [MainTest | lists:reverse([?ATTRIBUTE(export, [{MainFun, 0}]) | ReversedForms])  ++ RemainForms].
+
+
+
+split_forms_by_module([?ATTRIBUTE_GUARD(module, _) | _] = L1, L2) ->
+    {L2, L1};
+split_forms_by_module([H | T], L) ->
+    split_forms_by_module(T, [H | L]).
+
 
 %%--------------------------------------------------------------------
 %% Function: groups_to_test(GroupNames, TestModuleForms))
